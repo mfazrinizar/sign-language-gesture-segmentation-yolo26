@@ -141,7 +141,10 @@ wandb/
 *.mp4
 
 # Large data directories
-data/
+/data/
+results/
+models/
 *.pt
 *.pth
 *.code-workspace
+*smoke_test*

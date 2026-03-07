@@ -1,1 +1,1 @@
-# sign-language-gesture-segmentation-yolo26
+# Sign Language Gesture Segmentation using YOLO26n-seg

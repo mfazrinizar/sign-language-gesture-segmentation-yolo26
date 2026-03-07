@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sign-language-gesture-segmentation-yolo26"
+version = "0.1.0"
+description = "Sign Language Gesture Segmentation using YOLO26n-seg"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Apache 2.0"}
+authors = [
+    {name = "M. Fazri Nizar"},
+]
+
+dependencies = [
+    "torch>=2.0",
+    "torchvision>=0.15",
+    "kagglehub",
+    "opencv-python>=4.8",
+    "scikit-learn>=1.3",
+    "matplotlib>=3.7",
+    "seaborn>=0.13",
+    "streamlit>=1.30",
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "tqdm>=4.65",
+    "Pillow>=10.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ultralytics @ file:./ultralytics",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
