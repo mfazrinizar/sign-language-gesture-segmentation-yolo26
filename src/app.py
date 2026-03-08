@@ -15,23 +15,43 @@ Usage:
 
 import sys
 import time
+import importlib
 from pathlib import Path
 
-# Ensure project root is on sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+# Add *src/* (not project root) to sys.path so that `from config import …` works
+# WITHOUT exposing the local ultralytics/ folder that shadows the installed package.
+_src_dir = str(PROJECT_ROOT / "src")
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
 
-# If a local ultralytics/ folder exists (development), make sure the *installed*
-# package is found first so ``from ultralytics import YOLO`` works correctly.
-_local_ul = PROJECT_ROOT / "ultralytics"
-if _local_ul.is_dir():
-    sys.path = [p for p in sys.path if not str(Path(p).resolve()).startswith(str(_local_ul.resolve()))]
-    # Remove cached module entries that point at the local folder
-    for _mod_name in list(sys.modules):
-        _mod = sys.modules[_mod_name]
-        if hasattr(_mod, "__file__") and _mod.__file__ and str(_local_ul.resolve()) in str(Path(_mod.__file__).resolve()):
-            del sys.modules[_mod_name]
+# The project contains a local ultralytics/ source tree that shadows the installed
+# pip package.  We must ensure the *installed* one is loaded regardless of what
+# Streamlit or the OS puts on sys.path.
+def _import_yolo():
+    """Return the YOLO class from the *installed* ultralytics package."""
+    _local = str(PROJECT_ROOT / "ultralytics")
+    _saved = sys.path[:]
+    try:
+        # 1. Strip every path entry that could resolve to the local folder
+        sys.path = [
+            p for p in sys.path
+            if not (
+                str(Path(p).resolve()) == str(PROJECT_ROOT.resolve())
+                or str(Path(p).resolve()).startswith(_local)
+            )
+        ]
+        # 2. Purge any cached ultralytics modules
+        for key in [k for k in sys.modules if k == "ultralytics" or k.startswith("ultralytics.")]:
+            del sys.modules[key]
+        # 3. Import fresh
+        ul = importlib.import_module("ultralytics")
+        YOLO = getattr(ul, "YOLO")
+        return YOLO
+    finally:
+        sys.path = _saved
+
+YOLO = _import_yolo()
 
 import cv2
 import json
@@ -48,7 +68,7 @@ import av
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
 import threading
 
-from src.config import (
+from config import (
     CLASS_FOLDERS,
     CLASS_NAMES,
     INDEX_TO_NAME,
@@ -86,7 +106,6 @@ CLASS_COLORS = {
 @st.cache_resource(show_spinner="Loading YOLO model …")
 def load_model(model_path: str):
     """Load a YOLO model once and cache it."""
-    from ultralytics import YOLO
     return YOLO(model_path)
 
 
@@ -256,8 +275,7 @@ with tab_demo:
 
         # Shared state between the WebRTC callback thread and Streamlit UI
         _lock = threading.Lock()
-        _latest_detections: list = []
-        _latest_fps: float = 0.0
+        _shared: dict = {"detections": [], "fps": 0.0}
 
         # WebRTC STUN server (needed for Streamlit Cloud / NAT traversal)
         RTC_CONFIG = RTCConfiguration(
@@ -266,7 +284,6 @@ with tab_demo:
 
         def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
             """Called for every incoming video frame — runs YOLO + draws overlays."""
-            nonlocal _latest_detections, _latest_fps
             img_bgr = frame.to_ndarray(format="bgr24")
 
             t0 = time.perf_counter()
@@ -275,8 +292,8 @@ with tab_demo:
             elapsed = time.perf_counter() - t0
 
             with _lock:
-                _latest_detections = detections
-                _latest_fps = 1.0 / max(elapsed, 1e-6)
+                _shared["detections"] = detections
+                _shared["fps"] = 1.0 / max(elapsed, 1e-6)
 
             return av.VideoFrame.from_ndarray(vis, format="bgr24")
 
@@ -296,8 +313,8 @@ with tab_demo:
         if ctx.state.playing:
             while ctx.state.playing:
                 with _lock:
-                    dets = list(_latest_detections)
-                    fps = _latest_fps
+                    dets = list(_shared["detections"])
+                    fps = _shared["fps"]
                 if fps > 0:
                     fps_placeholder.metric("FPS (inference)", f"{fps:.1f}")
                 if dets:
