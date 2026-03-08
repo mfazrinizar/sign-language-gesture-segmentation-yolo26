@@ -12,6 +12,8 @@ license = {text = "Apache 2.0"}
 authors = [
     {name = "M. Fazri Nizar"},
 ]
+
+[tool.poetry]
 package-mode = false
 
 dependencies = [
