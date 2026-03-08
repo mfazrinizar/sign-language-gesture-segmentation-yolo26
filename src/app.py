@@ -22,6 +22,17 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+# If a local ultralytics/ folder exists (development), make sure the *installed*
+# package is found first so ``from ultralytics import YOLO`` works correctly.
+_local_ul = PROJECT_ROOT / "ultralytics"
+if _local_ul.is_dir():
+    sys.path = [p for p in sys.path if not str(Path(p).resolve()).startswith(str(_local_ul.resolve()))]
+    # Remove cached module entries that point at the local folder
+    for _mod_name in list(sys.modules):
+        _mod = sys.modules[_mod_name]
+        if hasattr(_mod, "__file__") and _mod.__file__ and str(_local_ul.resolve()) in str(Path(_mod.__file__).resolve()):
+            del sys.modules[_mod_name]
+
 import cv2
 import json
 import numpy as np
