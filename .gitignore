@@ -140,11 +140,14 @@ wandb/
 !README.md
 *.mp4
 
+results/evaluation/test_predictions/overlays
+
 # Large data directories
 /data/
-results/
-models/
+models/*
 *.pt
 *.pth
 *.code-workspace
 *smoke_test*
+# Keep the best model in version control for demo and reproducibility purposes
+!models/best.pt 
