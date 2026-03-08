@@ -7,9 +7,7 @@ name = "sign-language-gesture-segmentation-yolo26"
 version = "0.1.0"
 description = "Sign Language Gesture Segmentation using YOLO26n-seg"
 readme = "README.md"
-authors = [
-    {name = "M. Fazri Nizar"},
-]
+authors = ["M. Fazri Nizar"]
 packages = [{include = "src"}]
 
 [tool.poetry.dependencies]
