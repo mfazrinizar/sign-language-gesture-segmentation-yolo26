@@ -44,6 +44,10 @@ import seaborn as sns
 import pandas as pd
 from PIL import Image
 
+import av
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
+import threading
+
 from src.config import (
     CLASS_FOLDERS,
     CLASS_NAMES,
@@ -244,46 +248,67 @@ with tab_demo:
             else:
                 st.info("No detections at current confidence threshold.")
 
-    else:  # Webcam
+    else:  # Webcam — real-time via WebRTC
         st.markdown(
             "> Your browser will request camera access. "
-            "Each snapshot is sent to the model for inference."
+            "Inference runs on **every** video frame in real time."
         )
 
-        cam_photo = st.camera_input("Capture a frame from your webcam")
+        # Shared state between the WebRTC callback thread and Streamlit UI
+        _lock = threading.Lock()
+        _latest_detections: list = []
+        _latest_fps: float = 0.0
 
-        if cam_photo is not None:
-            file_bytes = np.frombuffer(cam_photo.read(), dtype=np.uint8)
-            img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+        # WebRTC STUN server (needed for Streamlit Cloud / NAT traversal)
+        RTC_CONFIG = RTCConfiguration(
+            {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+        )
 
-            with st.spinner("Running inference …"):
-                t0 = time.perf_counter()
-                detections = run_inference(model, img_bgr, conf=conf_threshold)
-                vis = draw_detections(img_bgr, detections)
-                elapsed = time.perf_counter() - t0
+        def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+            """Called for every incoming video frame — runs YOLO + draws overlays."""
+            nonlocal _latest_detections, _latest_fps
+            img_bgr = frame.to_ndarray(format="bgr24")
 
-            st.metric("Inference time", f"{elapsed * 1000:.0f} ms")
+            t0 = time.perf_counter()
+            detections = run_inference(model, img_bgr, conf=conf_threshold)
+            vis = draw_detections(img_bgr, detections)
+            elapsed = time.perf_counter() - t0
 
-            col_in, col_out = st.columns(2)
-            with col_in:
-                st.subheader("Captured Frame")
-                st.image(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB), use_container_width=True)
-            with col_out:
-                st.subheader("Prediction")
-                st.image(cv2.cvtColor(vis, cv2.COLOR_BGR2RGB), use_container_width=True)
+            with _lock:
+                _latest_detections = detections
+                _latest_fps = 1.0 / max(elapsed, 1e-6)
 
-            if detections:
-                st.subheader("Detection Results")
-                rows = []
-                for d in detections:
-                    rows.append({
-                        "Class": d["class_name"],
-                        "Confidence": f"{d['confidence']:.3f}",
-                        "Box": f"({d['box'][0]}, {d['box'][1]}) -> ({d['box'][2]}, {d['box'][3]})",
-                    })
-                st.dataframe(pd.DataFrame(rows), use_container_width=True)
-            else:
-                st.info("No detections at current confidence threshold.")
+            return av.VideoFrame.from_ndarray(vis, format="bgr24")
+
+        ctx = webrtc_streamer(
+            key="sign-lang-demo",
+            mode=WebRtcMode.SENDRECV,
+            rtc_configuration=RTC_CONFIG,
+            video_frame_callback=video_frame_callback,
+            media_stream_constraints={"video": True, "audio": False},
+            async_processing=True,
+        )
+
+        # Live info panel (updates while streaming)
+        fps_placeholder = st.empty()
+        det_placeholder = st.empty()
+
+        if ctx.state.playing:
+            while ctx.state.playing:
+                with _lock:
+                    dets = list(_latest_detections)
+                    fps = _latest_fps
+                if fps > 0:
+                    fps_placeholder.metric("FPS (inference)", f"{fps:.1f}")
+                if dets:
+                    labels = ", ".join(
+                        f"**{d['class_name']}** ({d['confidence']:.2f})"
+                        for d in dets
+                    )
+                    det_placeholder.markdown(f"Detected: {labels}")
+                else:
+                    det_placeholder.info("No gesture detected.")
+                time.sleep(0.1)  # update UI ~10 Hz
 
 
 
