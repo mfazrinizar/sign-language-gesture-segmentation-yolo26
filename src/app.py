@@ -22,12 +22,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-# The vendored ultralytics/ folder shadows the installed package.
-# Add ultralytics/ so `from ultralytics import YOLO` resolves correctly.
-_ULTRA_DIR = PROJECT_ROOT / "ultralytics"
-if _ULTRA_DIR.is_dir() and str(_ULTRA_DIR) not in sys.path:
-    sys.path.insert(0, str(_ULTRA_DIR))
-
 import cv2
 import json
 import numpy as np

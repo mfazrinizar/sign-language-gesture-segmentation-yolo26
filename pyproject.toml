@@ -27,12 +27,11 @@ dependencies = [
     "tqdm>=4.65",
     "Pillow>=10.0",
     "pyyaml>=6.0",
+    "ultralytics @ git+https://github.com/mfazrinizar/ultralytics.git@main",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "ultralytics @ file:./ultralytics",
-]
+dev = []
 
 [tool.setuptools.packages.find]
 where = ["."]
