@@ -246,72 +246,44 @@ with tab_demo:
 
     else:  # Webcam
         st.markdown(
-            "> Press **Start** to begin webcam capture. "
-            "Press **Stop** to end. Inference runs on every captured frame."
+            "> Your browser will request camera access. "
+            "Each snapshot is sent to the model for inference."
         )
 
-        col_ctrl, col_fps = st.columns([3, 1])
-        with col_ctrl:
-            start_btn = st.button("▶️ Start Webcam", type="primary")
-            stop_btn = st.button("⏹️ Stop Webcam")
-        with col_fps:
-            fps_display = st.empty()
+        cam_photo = st.camera_input("Capture a frame from your webcam")
 
-        frame_holder = st.empty()
-        info_holder = st.empty()
+        if cam_photo is not None:
+            file_bytes = np.frombuffer(cam_photo.read(), dtype=np.uint8)
+            img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
-        if "webcam_running" not in st.session_state:
-            st.session_state.webcam_running = False
+            with st.spinner("Running inference …"):
+                t0 = time.perf_counter()
+                detections = run_inference(model, img_bgr, conf=conf_threshold)
+                vis = draw_detections(img_bgr, detections)
+                elapsed = time.perf_counter() - t0
 
-        if start_btn:
-            st.session_state.webcam_running = True
-        if stop_btn:
-            st.session_state.webcam_running = False
+            st.metric("Inference time", f"{elapsed * 1000:.0f} ms")
 
-        if st.session_state.webcam_running:
-            cap = cv2.VideoCapture(0)
-            if not cap.isOpened():
-                st.error("Could not open webcam. Check camera permissions.")
-                st.session_state.webcam_running = False
+            col_in, col_out = st.columns(2)
+            with col_in:
+                st.subheader("Captured Frame")
+                st.image(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB), use_container_width=True)
+            with col_out:
+                st.subheader("Prediction")
+                st.image(cv2.cvtColor(vis, cv2.COLOR_BGR2RGB), use_container_width=True)
+
+            if detections:
+                st.subheader("Detection Results")
+                rows = []
+                for d in detections:
+                    rows.append({
+                        "Class": d["class_name"],
+                        "Confidence": f"{d['confidence']:.3f}",
+                        "Box": f"({d['box'][0]}, {d['box'][1]}) -> ({d['box'][2]}, {d['box'][3]})",
+                    })
+                st.dataframe(pd.DataFrame(rows), use_container_width=True)
             else:
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-                try:
-                    while st.session_state.webcam_running:
-                        t0 = time.perf_counter()
-                        ret, frame = cap.read()
-                        if not ret:
-                            st.warning("Failed to read frame.")
-                            break
-
-                        detections = run_inference(model, frame, conf=conf_threshold)
-                        vis = draw_detections(frame, detections)
-
-                        fps = 1.0 / max(time.perf_counter() - t0, 1e-6)
-                        fps_display.metric("FPS", f"{fps:.1f}")
-
-                        frame_holder.image(
-                            cv2.cvtColor(vis, cv2.COLOR_BGR2RGB),
-                            channels="RGB",
-                            use_container_width=True,
-                        )
-
-                        if detections:
-                            labels = ", ".join(
-                                f"**{d['class_name']}** ({d['confidence']:.2f})"
-                                for d in detections
-                            )
-                            info_holder.markdown(f"Detected: {labels}")
-                        else:
-                            info_holder.info("No gesture detected.")
-
-                except Exception:
-                    pass
-                finally:
-                    cap.release()
-                    st.session_state.webcam_running = False
+                st.info("No detections at current confidence threshold.")
 
 
 
