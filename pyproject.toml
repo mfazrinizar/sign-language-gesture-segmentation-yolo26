@@ -12,6 +12,7 @@ license = {text = "Apache 2.0"}
 authors = [
     {name = "M. Fazri Nizar"},
 ]
+package-mode = false
 
 dependencies = [
     "torch>=2.0",
@@ -32,7 +33,3 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = []
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["src*"]
